@@ -431,14 +431,17 @@ bool QEventDispatcherWinRT::event(QEvent *e)
     return QAbstractEventDispatcher::event(e);
 }
 
-QEventDispatcherWinRTPrivate::QEventDispatcherWinRTPrivate() : interrupt(false)
+QEventDispatcherWinRTPrivate::QEventDispatcherWinRTPrivate()
+    : interrupt(false)
+    , timerFactory(0)
 {
     GetActivationFactory(HString::MakeReference(RuntimeClass_Windows_System_Threading_ThreadPoolTimer).Get(), &timerFactory);
 }
 
 QEventDispatcherWinRTPrivate::~QEventDispatcherWinRTPrivate()
 {
-    timerFactory->Release();
+    if (timerFactory)
+        timerFactory->Release();
 }
 
 void QEventDispatcherWinRTPrivate::registerTimer(WinRTTimerInfo *t)
