@@ -590,7 +590,7 @@ QFileSystemEntry QFileSystemEngine::absoluteName(const QFileSystemEntry &entry)
     return QFileSystemEntry(ret, QFileSystemEntry::FromInternalPath());
 }
 
-#if !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if !defined(Q_OS_WINCE)
 
 // FILE_INFO_BY_HANDLE_CLASS has been extended by FileIdInfo = 18 as of VS2012.
 typedef enum { Q_FileIdInfo = 18 } Q_FILE_INFO_BY_HANDLE_CLASS;
@@ -611,18 +611,23 @@ typedef struct _FILE_ID_INFO {
 static inline QByteArray fileId(HANDLE handle)
 {
     QByteArray result;
+#if !defined(Q_OS_WINRT)
     BY_HANDLE_FILE_INFORMATION info;
     if (GetFileInformationByHandle(handle, &info)) {
         result = QByteArray::number(uint(info.nFileIndexLow), 16);
         result += ':';
         result += QByteArray::number(uint(info.nFileIndexHigh), 16);
     }
+#else
+    Q_UNUSED(handle);
+#endif //!Q_OS_WINRT
     return result;
 }
 
 // File ID for Windows starting from version 8.
 QByteArray fileIdWin8(HANDLE handle)
 {
+#if !defined(Q_OS_WINRT)
     typedef BOOL (WINAPI* GetFileInformationByHandleExType)(HANDLE, Q_FILE_INFO_BY_HANDLE_CLASS, void *, DWORD);
 
     // Dynamically resolve  GetFileInformationByHandleEx (Vista onwards).
@@ -641,25 +646,40 @@ QByteArray fileIdWin8(HANDLE handle)
             result += QByteArray((char *)infoEx.FileId.Identifier, sizeof(infoEx.FileId.Identifier)).toHex();
         }
     }
+#else
+    QByteArray result;
+    FILE_ID_INFO infoEx;
+    if (GetFileInformationByHandleEx(handle, FileIdInfo,
+                                     &infoEx, sizeof(FILE_ID_INFO))) {
+        result = QByteArray::number(infoEx.VolumeSerialNumber, 16);
+        result += ':';
+        result += QByteArray((char *)infoEx.FileId.Identifier, sizeof(infoEx.FileId.Identifier)).toHex();
+    }
+#endif
     return result;
 }
-#endif // !Q_OS_WINCE && !Q_OS_WINRT
+#endif // !Q_OS_WINCE
 
 //static
 QByteArray QFileSystemEngine::id(const QFileSystemEntry &entry)
 {
-#if !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if !defined(Q_OS_WINCE)
     QByteArray result;
     const HANDLE handle =
+#if !defined(Q_OS_WINRT)
         CreateFile((wchar_t*)entry.nativeFilePath().utf16(), GENERIC_READ,
                    FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+#else
+        CreateFile2((wchar_t*)entry.nativeFilePath().utf16(), GENERIC_READ,
+                    FILE_SHARE_READ, OPEN_EXISTING, NULL);
+#endif
     if (handle) {
         result = QSysInfo::windowsVersion() >= QSysInfo::WV_WINDOWS8 ?
                  fileIdWin8(handle) : fileId(handle);
         CloseHandle(handle);
     }
     return result;
-#else // !Q_OS_WINCE && !Q_OS_WINRT
+#else // !Q_OS_WINCE
     return entry.nativeFilePath().toLower().toLatin1();
 #endif
 }
