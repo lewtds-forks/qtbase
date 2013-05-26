@@ -59,6 +59,7 @@ namespace ABI {
         namespace UI {
             namespace Core {
                 struct IAutomationProviderRequestedEventArgs;
+                struct ICharacterReceivedEventArgs;
                 struct ICoreWindow;
                 struct ICoreWindowEventArgs;
                 struct IKeyEventArgs;
@@ -80,7 +81,6 @@ struct IInspectable;
 QT_BEGIN_NAMESPACE
 
 class QTouchDevice;
-class QWinRTKeyMapper;
 class QWinRTEGLContext;
 class QWinRTPageFlipper;
 class QWinRTCursor;
@@ -117,13 +117,13 @@ public:
 #endif
 
 private:
-    HRESULT handleKeyEvent(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args);
+
 
     // Event handlers
     QHash<QEvent::Type, EventRegistrationToken> m_tokens;
 
-    HRESULT onKeyDown(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args);
-    HRESULT onKeyUp(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args);
+    HRESULT onKey(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args);
+    HRESULT onCharacterReceived(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::ICharacterReceivedEventArgs *args);
     HRESULT onPointerEntered(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IPointerEventArgs *args);
     HRESULT onPointerExited(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IPointerEventArgs *args);
     HRESULT onPointerUpdated(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IPointerEventArgs *args);
@@ -141,7 +141,6 @@ private:
     QImage::Format m_format;
     QSurfaceFormat m_surfaceFormat;
     int m_depth;
-    QWinRTKeyMapper *m_keyMapper;
     QWinRTInputContext *m_inputContext;
     QWinRTCursor *m_cursor;
 
@@ -149,6 +148,7 @@ private:
     Qt::ScreenOrientation m_nativeOrientation;
     Qt::ScreenOrientation m_orientation;
 
+    QHash<quint32, QString> m_activeKeys;
     QHash<quint32, Pointer> m_pointers;
     QHash<quint32, QWindowSystemInterface::TouchPoint> m_touchPoints;
 #ifdef Q_WINRT_GL

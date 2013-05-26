@@ -18,7 +18,6 @@ SOURCES = \
     qwinrteventdispatcher.cpp \
     qwinrtinputcontext.cpp \
     qwinrtintegration.cpp \
-    qwinrtkeymapper.cpp \
     qwinrtscreen.cpp \
     qwinrtservices.cpp \
     qwinrtwindow.cpp
@@ -29,7 +28,6 @@ HEADERS = \
     qwinrteventdispatcher.h \
     qwinrtinputcontext.h \
     qwinrtintegration.h \
-    qwinrtkeymapper.h \
     qwinrtscreen.h \
     qwinrtservices.h \
     qwinrtwindow.h

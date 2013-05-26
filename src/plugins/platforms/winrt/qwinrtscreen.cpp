@@ -43,7 +43,6 @@
 #include <qpa/qwindowsysteminterface.h>
 #include "qwinrtscreen.h"
 #include "qwinrtbackingstore.h"
-#include "qwinrtkeymapper.h"
 #include "qwinrtinputcontext.h"
 #include "qwinrtcursor.h"
 #ifdef Q_WINRT_GL
@@ -101,11 +100,369 @@ static inline Qt::ScreenOrientation qOrientationFromNative(DisplayOrientations o
     }
 }
 
+static inline Qt::KeyboardModifiers qKeyModifiers(ICoreWindow *window)
+{
+    Qt::KeyboardModifiers mods;
+    CoreVirtualKeyStates mod;
+    window->GetAsyncKeyState(VirtualKey_Shift, &mod);
+    if (mod == CoreVirtualKeyStates_Down)
+        mods |= Qt::ShiftModifier;
+    window->GetAsyncKeyState(VirtualKey_Menu, &mod);
+    if (mod == CoreVirtualKeyStates_Down)
+        mods |= Qt::AltModifier;
+    window->GetAsyncKeyState(VirtualKey_Control, &mod);
+    if (mod == CoreVirtualKeyStates_Down)
+        mods |= Qt::ControlModifier;
+    window->GetAsyncKeyState(VirtualKey_LeftWindows, &mod);
+    if (mod == CoreVirtualKeyStates_Down) {
+        mods |= Qt::MetaModifier;
+    } else {
+        window->GetAsyncKeyState(VirtualKey_RightWindows, &mod);
+        if (mod == CoreVirtualKeyStates_Down)
+            mods |= Qt::MetaModifier;
+    }
+    return mods;
+}
+
+// Return Qt meta key from VirtualKey (discard character keys)
+static inline Qt::Key qMetaKeyFromVirtual(VirtualKey key)
+{
+    switch (key) {
+
+    default:
+        return Qt::Key_unknown;
+
+    // Modifiers
+    case VirtualKey_Shift:
+    case VirtualKey_LeftShift:
+    case VirtualKey_RightShift:
+        return Qt::Key_Shift;
+    case VirtualKey_Control:
+    case VirtualKey_LeftControl:
+    case VirtualKey_RightControl:
+        return Qt::Key_Control;
+    case VirtualKey_Menu:
+    case VirtualKey_LeftMenu:
+    case VirtualKey_RightMenu:
+        return Qt::Key_Alt;
+    case VirtualKey_LeftWindows:
+    case VirtualKey_RightWindows:
+        return Qt::Key_Meta;
+
+    // Toggle keys
+    case VirtualKey_CapitalLock:
+        return Qt::Key_CapsLock;
+    case VirtualKey_NumberKeyLock:
+        return Qt::Key_NumLock;
+    case VirtualKey_Scroll:
+        return Qt::Key_ScrollLock;
+
+    // East-Asian language keys
+    case VirtualKey_Kana:
+    //case VirtualKey_Hangul: // Same enum as Kana
+        return Qt::Key_Kana_Shift;
+    case VirtualKey_Junja:
+        return Qt::Key_Hangul_Jeonja;
+    case VirtualKey_Kanji:
+    //case VirtualKey_Hanja: // Same enum as Kanji
+        return Qt::Key_Kanji;
+    case VirtualKey_ModeChange:
+        return Qt::Key_Mode_switch;
+    case VirtualKey_Convert:
+        return Qt::Key_Henkan;
+    case VirtualKey_NonConvert:
+        return Qt::Key_Muhenkan;
+
+    // Misc. keys
+    case VirtualKey_Cancel:
+        return Qt::Key_Cancel;
+    case VirtualKey_Back:
+        return Qt::Key_Back;
+    case VirtualKey_Clear:
+        return Qt::Key_Clear;
+    case VirtualKey_Application:
+        return Qt::Key_ApplicationLeft;
+    case VirtualKey_Sleep:
+        return Qt::Key_Sleep;
+    case VirtualKey_Pause:
+        return Qt::Key_Pause;
+    case VirtualKey_Space:
+        return Qt::Key_Space;
+    case VirtualKey_PageUp:
+        return Qt::Key_PageUp;
+    case VirtualKey_PageDown:
+        return Qt::Key_PageDown;
+    case VirtualKey_End:
+        return Qt::Key_End;
+    case VirtualKey_Home:
+        return Qt::Key_Home;
+    case VirtualKey_Left:
+        return Qt::Key_Left;
+    case VirtualKey_Up:
+        return Qt::Key_Up;
+    case VirtualKey_Right:
+        return Qt::Key_Right;
+    case VirtualKey_Down:
+        return Qt::Key_Down;
+    case VirtualKey_Select:
+        return Qt::Key_Select;
+    case VirtualKey_Print:
+        return Qt::Key_Print;
+    case VirtualKey_Execute:
+        return Qt::Key_Execute;
+    case VirtualKey_Insert:
+        return Qt::Key_Insert;
+    case VirtualKey_Delete:
+        return Qt::Key_Delete;
+    case VirtualKey_Help:
+        return Qt::Key_Help;
+    case VirtualKey_Snapshot:
+        return Qt::Key_Camera;
+    case VirtualKey_Escape:
+        return Qt::Key_Escape;
+
+    // Function Keys
+    case VirtualKey_F1:
+        return Qt::Key_F1;
+    case VirtualKey_F2:
+        return Qt::Key_F2;
+    case VirtualKey_F3:
+        return Qt::Key_F3;
+    case VirtualKey_F4:
+        return Qt::Key_F4;
+    case VirtualKey_F5:
+        return Qt::Key_F5;
+    case VirtualKey_F6:
+        return Qt::Key_F6;
+    case VirtualKey_F7:
+        return Qt::Key_F7;
+    case VirtualKey_F8:
+        return Qt::Key_F8;
+    case VirtualKey_F9:
+        return Qt::Key_F9;
+    case VirtualKey_F10:
+        return Qt::Key_F10;
+    case VirtualKey_F11:
+        return Qt::Key_F11;
+    case VirtualKey_F12:
+        return Qt::Key_F12;
+    case VirtualKey_F13:
+        return Qt::Key_F13;
+    case VirtualKey_F14:
+        return Qt::Key_F14;
+    case VirtualKey_F15:
+        return Qt::Key_F15;
+    case VirtualKey_F16:
+        return Qt::Key_F16;
+    case VirtualKey_F17:
+        return Qt::Key_F17;
+    case VirtualKey_F18:
+        return Qt::Key_F18;
+    case VirtualKey_F19:
+        return Qt::Key_F19;
+    case VirtualKey_F20:
+        return Qt::Key_F20;
+    case VirtualKey_F21:
+        return Qt::Key_F21;
+    case VirtualKey_F22:
+        return Qt::Key_F22;
+    case VirtualKey_F23:
+        return Qt::Key_F23;
+    case VirtualKey_F24:
+        return Qt::Key_F24;
+
+    /* Character keys - pass through.
+    case VirtualKey_Enter:
+    case VirtualKey_Tab:
+    case VirtualKey_Number0:
+    case VirtualKey_Number1:
+    case VirtualKey_Number2:
+    case VirtualKey_Number3:
+    case VirtualKey_Number4:
+    case VirtualKey_Number5:
+    case VirtualKey_Number6:
+    case VirtualKey_Number7:
+    case VirtualKey_Number8:
+    case VirtualKey_Number9:
+    case VirtualKey_A:
+    case VirtualKey_B:
+    case VirtualKey_C:
+    case VirtualKey_D:
+    case VirtualKey_E:
+    case VirtualKey_F:
+    case VirtualKey_G:
+    case VirtualKey_H:
+    case VirtualKey_I:
+    case VirtualKey_J:
+    case VirtualKey_K:
+    case VirtualKey_L:
+    case VirtualKey_M:
+    case VirtualKey_N:
+    case VirtualKey_O:
+    case VirtualKey_P:
+    case VirtualKey_Q:
+    case VirtualKey_R:
+    case VirtualKey_S:
+    case VirtualKey_T:
+    case VirtualKey_U:
+    case VirtualKey_V:
+    case VirtualKey_W:
+    case VirtualKey_X:
+    case VirtualKey_Y:
+    case VirtualKey_Z:
+    case VirtualKey_Multiply:
+    case VirtualKey_Add:
+    case VirtualKey_Separator:
+    case VirtualKey_Subtract:
+    case VirtualKey_Decimal:
+    case VirtualKey_Divide:*/
+
+    /* NumberPad keys. No special Alt handling is needed, as WinRT doesn't send events if Alt is pressed.
+    case VirtualKey_NumberPad0:
+    case VirtualKey_NumberPad1:
+    case VirtualKey_NumberPad2:
+    case VirtualKey_NumberPad3:
+    case VirtualKey_NumberPad4:
+    case VirtualKey_NumberPad5:
+    case VirtualKey_NumberPad6:
+    case VirtualKey_NumberPad7:
+    case VirtualKey_NumberPad8:
+    case VirtualKey_NumberPad9:*/
+
+    /* Keys with no matching Qt enum (?)
+    case VirtualKey_None:
+    case VirtualKey_LeftButton:
+    case VirtualKey_RightButton:
+    case VirtualKey_MiddleButton:
+    case VirtualKey_XButton1:
+    case VirtualKey_XButton2:
+    case VirtualKey_Final:
+    case VirtualKey_Accept:*/
+    }
+}
+
+// Map Qt keys from char
+static inline Qt::Key qKeyFromChar(quint32 code, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    switch (code) {
+    case 0x1:
+    case 'a':
+    case 'A':
+        return Qt::Key_A;
+    case 0x2:
+    case 'b':
+    case 'B':
+        return Qt::Key_B;
+    case 0x3:
+    case 'c':
+    case 'C':
+        return Qt::Key_C;
+    case 0x4:
+    case 'd':
+    case 'D':
+        return Qt::Key_D;
+    case 0x5:
+    case 'e':
+    case 'E':
+        return Qt::Key_E;
+    case 0x6:
+    case 'f':
+    case 'F':
+        return Qt::Key_F;
+    case 0x7:
+    case 'g':
+    case 'G':
+        return Qt::Key_G;
+    case 0x8:
+    //case '\b':
+        return mods & Qt::ControlModifier ? Qt::Key_H : Qt::Key_Backspace;
+    case 'h':
+    case 'H':
+        return Qt::Key_H;
+    case 0x9:
+    //case '\t':
+        return mods & Qt::ControlModifier ? Qt::Key_I : Qt::Key_Tab;
+    case 'i':
+    case 'I':
+        return Qt::Key_I;
+    case 0xa:
+    //case '\n':
+        return mods & Qt::ControlModifier ? Qt::Key_J : Qt::Key_Enter;
+    case 'j':
+    case 'J':
+        return Qt::Key_J;
+    case 0xb:
+    case 'k':
+    case 'K':
+        return Qt::Key_K;
+    case 0xc:
+    case 'l':
+    case 'L':
+        return Qt::Key_L;
+    case 0xd:
+    case 'm':
+    case 'M':
+        return Qt::Key_M;
+    case 0xe:
+    case 'n':
+    case 'N':
+        return Qt::Key_N;
+    case 0xf:
+    case 'o':
+    case 'O':
+        return Qt::Key_O;
+    case 0x10:
+    case 'p':
+    case 'P':
+        return Qt::Key_P;
+    case 0x11:
+    case 'q':
+    case 'Q':
+        return Qt::Key_Q;
+    case 0x12:
+    case 'r':
+    case 'R':
+        return Qt::Key_R;
+    case 0x13:
+    case 's':
+    case 'S':
+        return Qt::Key_S;
+    case 0x14:
+    case 't':
+    case 'T':
+        return Qt::Key_T;
+    case 0x15:
+    case 'u':
+    case 'U':
+        return Qt::Key_U;
+    case 0x16:
+    case 'v':
+    case 'V':
+        return Qt::Key_V;
+    case 0x17:
+    case 'w':
+    case 'W':
+        return Qt::Key_W;
+    case 0x18:
+    case 'x':
+    case 'X':
+        return Qt::Key_X;
+    case 0x19:
+    case 'y':
+    case 'Y':
+        return Qt::Key_Y;
+    case 0x1A:
+    case 'z':
+    case 'Z':
+        return Qt::Key_Z;
+    }
+    return Qt::Key_unknown;
+}
+
 QWinRTScreen::QWinRTScreen(ICoreWindow *window)
     : m_window(window)
     , m_depth(32)
     , m_format(QImage::Format_ARGB32_Premultiplied)
-    , m_keyMapper(new QWinRTKeyMapper())
 #ifdef Q_OS_WINPHONE
     , m_inputContext(new QWinRTInputContext(m_window))
 #else
@@ -158,8 +515,9 @@ QWinRTScreen::QWinRTScreen(ICoreWindow *window)
 #endif // Q_WINRT_GL
 
     // Event handlers mapped to QEvents
-    m_window->add_KeyDown(Callback<KeyHandler>(this, &QWinRTScreen::onKeyDown).Get(), &m_tokens[QEvent::KeyPress]);
-    m_window->add_KeyUp(Callback<KeyHandler>(this, &QWinRTScreen::onKeyUp).Get(), &m_tokens[QEvent::KeyRelease]);
+    m_window->add_KeyDown(Callback<KeyHandler>(this, &QWinRTScreen::onKey).Get(), &m_tokens[QEvent::KeyPress]);
+    m_window->add_KeyUp(Callback<KeyHandler>(this, &QWinRTScreen::onKey).Get(), &m_tokens[QEvent::KeyRelease]);
+    m_window->add_CharacterReceived(Callback<CharacterReceivedHandler>(this, &QWinRTScreen::onCharacterReceived).Get(), &m_tokens[QEvent::User]);
     m_window->add_PointerEntered(Callback<PointerHandler>(this, &QWinRTScreen::onPointerEntered).Get(), &m_tokens[QEvent::Enter]);
     m_window->add_PointerExited(Callback<PointerHandler>(this, &QWinRTScreen::onPointerExited).Get(), &m_tokens[QEvent::Leave]);
     m_window->add_PointerMoved(Callback<PointerHandler>(this, &QWinRTScreen::onPointerUpdated).Get(), &m_tokens[QEvent::MouseMove]);
@@ -261,21 +619,72 @@ void QWinRTScreen::update(const QRegion &region, const QPoint &offset, const voi
 
 #endif // Q_WINRT_GL
 
-HRESULT QWinRTScreen::handleKeyEvent(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args)
+HRESULT QWinRTScreen::onKey(ABI::Windows::UI::Core::ICoreWindow *window, ABI::Windows::UI::Core::IKeyEventArgs *args)
 {
     Q_UNUSED(window);
 
-    return m_keyMapper->translateKeyEvent(0, args) ? S_OK : S_FALSE;
+    // Windows Phone documentation claims this will throw, but doesn't seem to
+    CorePhysicalKeyStatus keyStatus;
+    args->get_KeyStatus(&keyStatus);
+
+    VirtualKey virtualKey;
+    args->get_VirtualKey(&virtualKey);
+
+    // Filter meta keys
+    Qt::Key key = qMetaKeyFromVirtual(virtualKey);
+
+    // Get keyboard modifiers. This could alternatively be tracked by key presses, but
+    // WinRT doesn't send key events for Alt unless Ctrl is also pressed.
+    // If the key that caused this event is a modifier, it is not returned in the flags.
+    Qt::KeyboardModifiers mods = qKeyModifiers(m_window);
+
+    if (m_activeKeys.contains(keyStatus.ScanCode)) { // Handle tracked keys (release/repeat)
+        QString text = keyStatus.IsKeyReleased ? m_activeKeys.take(keyStatus.ScanCode) : m_activeKeys.value(keyStatus.ScanCode);
+        QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyRelease, key, mods, text);
+
+        if (!keyStatus.IsKeyReleased) // Repeating key
+            QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyPress, key, mods, text);
+
+    } else if (keyStatus.IsKeyReleased) { // Unlikely, but possible if key is held before application is focused
+        QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyRelease, key, mods);
+
+    } else { // Handle key presses
+        if (key != Qt::Key_unknown) // Handle non-character key presses here, others in onCharacterReceived
+            QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyPress, key, mods);
+
+        m_activeKeys.insert(keyStatus.ScanCode, QString());
+    }
+
+    return S_OK;
 }
 
-HRESULT QWinRTScreen::onKeyDown(ICoreWindow *window, IKeyEventArgs *args)
+HRESULT QWinRTScreen::onCharacterReceived(ICoreWindow *window, ICharacterReceivedEventArgs *args)
 {
-    return handleKeyEvent(window, args);
-}
+    Q_UNUSED(window);
 
-HRESULT QWinRTScreen::onKeyUp(ICoreWindow *window, IKeyEventArgs *args)
-{
-    return handleKeyEvent(window, args);
+    quint32 keyCode;
+    args->get_KeyCode(&keyCode);
+
+    // Windows Phone documentation claims this will throw, but doesn't seem to
+    CorePhysicalKeyStatus keyStatus;
+    args->get_KeyStatus(&keyStatus);
+
+    QString text = QChar(keyCode);
+
+    Qt::KeyboardModifiers mods = qKeyModifiers(m_window);
+    Qt::Key key = qKeyFromChar(keyCode, mods);
+
+    QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyPress, key, mods, text);
+
+    // Note that we can receive a character without corresponding press/release events, such as
+    // the case of an Alt-combo. In this case, we should send the release immediately.
+    if (m_activeKeys.contains(keyStatus.ScanCode)) {
+        m_activeKeys.insert(keyStatus.ScanCode, text);
+    } else {
+        QWindowSystemInterface::handleKeyEvent(0, QEvent::KeyRelease, key, mods, text);
+    }
+
+    return S_OK;
 }
 
 HRESULT QWinRTScreen::onPointerEntered(ICoreWindow *window, IPointerEventArgs *args)
