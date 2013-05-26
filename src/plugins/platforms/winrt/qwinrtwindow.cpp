@@ -76,19 +76,17 @@ QSurfaceFormat QWinRTWindow::format() const
 
 void QWinRTWindow::setWindowState(Qt::WindowState state)
 {
-    switch (state) {
-    case Qt::WindowMaximized:
-    case Qt::WindowFullScreen:
-        setGeometry(window()->screen()->geometry());
-        QWindowSystemInterface::handleGeometryChange(window(), geometry());
-        QWindowSystemInterface::handleWindowStateChanged(window(), Qt::WindowMaximized);
-        break;
-
-    case Qt::WindowMinimized:
-        QWindowSystemInterface::handleWindowStateChanged(window(), Qt::WindowMinimized);
-        break;
-
-    default:
-        break;
+    // The screen is aware of 4 logical window states:
+    // hidden (Minimized), snapped (NoState), filled (Maximized), FullScreen
+    // This is irrelevant to the window size, which always matches the viewport size
+    Qt::WindowState screenState = static_cast<QWinRTScreen *>(screen())->windowState();
+    // Non-top-level and QWinRTScreen-initiated changes are OK
+    if (!window()->isTopLevel() || state == screenState) {
+        QWindowSystemInterface::handleWindowStateChanged(window(), state);
+        return;
     }
+    // These situations are initiated by the application; we can only handle one case: unsnap.
+    // We can't minimize or restore programmatically, so those cases are ignored.
+    if (screenState == Qt::WindowNoState && (state == Qt::WindowMaximized || Qt::WindowFullScreen))
+        static_cast<QWinRTScreen *>(screen())->tryUnsnap();
 }

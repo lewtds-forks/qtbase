@@ -68,6 +68,9 @@ namespace ABI {
                 struct IWindowActivatedEventArgs;
                 struct IWindowSizeChangedEventArgs;
             }
+            namespace ViewManagement {
+                struct IApplicationViewStatics;
+            }
         }
         namespace Graphics {
             namespace Display {
@@ -106,6 +109,9 @@ public:
     Qt::ScreenOrientation nativeOrientation() const;
     Qt::ScreenOrientation orientation() const;
 
+    Qt::WindowState windowState() const;
+    bool tryUnsnap();
+
 #ifdef Q_WINRT_GL
     ABI::Windows::UI::Core::ICoreWindow *coreWindow() const;
     EGLDisplay eglDisplay() const;
@@ -136,7 +142,12 @@ private:
 
     HRESULT onOrientationChanged(IInspectable *);
 
+    void handleWindowState();
+
     ABI::Windows::UI::Core::ICoreWindow *m_window;
+    ABI::Windows::UI::ViewManagement::IApplicationViewStatics *m_applicationView;
+    bool m_visible;
+    Qt::WindowState m_windowState;
     QRect m_geometry;
     QImage::Format m_format;
     QSurfaceFormat m_surfaceFormat;

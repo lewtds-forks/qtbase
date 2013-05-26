@@ -61,6 +61,7 @@
 #include <windows.ui.h>
 #include <windows.ui.core.h>
 #include <windows.ui.input.h>
+#include <windows.ui.viewmanagement.h>
 #include <windows.graphics.display.h>
 #include <windows.foundation.h>
 
@@ -70,6 +71,7 @@ using namespace ABI::Windows::Foundation;
 using namespace ABI::Windows::System;
 using namespace ABI::Windows::UI::Core;
 using namespace ABI::Windows::UI::Input;
+using namespace ABI::Windows::UI::ViewManagement;
 using namespace ABI::Windows::Devices::Input;
 using namespace ABI::Windows::Graphics::Display;
 
@@ -461,6 +463,8 @@ static inline Qt::Key qKeyFromChar(quint32 code, Qt::KeyboardModifiers mods = Qt
 
 QWinRTScreen::QWinRTScreen(ICoreWindow *window)
     : m_window(window)
+    , m_visible(true)
+    , m_windowState(Qt::WindowFullScreen)
     , m_depth(32)
     , m_format(QImage::Format_ARGB32_Premultiplied)
 #ifdef Q_OS_WINPHONE
@@ -546,6 +550,9 @@ QWinRTScreen::QWinRTScreen(ICoreWindow *window)
         m_displayProperties->add_OrientationChanged(Callback<IDisplayPropertiesEventHandler>(this, &QWinRTScreen::onOrientationChanged).Get(),
                                                     &m_tokens[QEvent::OrientationChange]);
     }
+
+    GetActivationFactory(HString::MakeReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(),
+                         &m_applicationView);
 }
 
 QRect QWinRTScreen::geometry() const
@@ -586,6 +593,22 @@ Qt::ScreenOrientation QWinRTScreen::nativeOrientation() const
 Qt::ScreenOrientation QWinRTScreen::orientation() const
 {
     return m_orientation;
+}
+
+Qt::WindowState QWinRTScreen::windowState() const
+{
+    return m_windowState;
+}
+
+bool QWinRTScreen::tryUnsnap()
+{
+#ifndef Q_OS_WINPHONE
+    boolean success;
+    m_applicationView->TryUnsnap(&success);
+    return success;
+#else
+    return false;
+#endif
 }
 
 #ifdef Q_WINRT_GL
@@ -915,6 +938,8 @@ HRESULT QWinRTScreen::onSizeChanged(ICoreWindow *window, IWindowSizeChangedEvent
     foreach (QWindow *w, qGuiApp->topLevelWindows())
         QWindowSystemInterface::handleExposeEvent(w, QRect(QPoint(), w->size()));
 
+    handleWindowState();
+
     return S_OK;
 }
 
@@ -942,14 +967,11 @@ HRESULT QWinRTScreen::onVisibilityChanged(ICoreWindow *window, IVisibilityChange
     Q_UNUSED(window);
     Q_UNUSED(args);
 
-    boolean visible = FALSE;
-    if (FAILED(args->get_Visible(&visible))) {
-        qWarning(Q_FUNC_INFO ": failed to get visible state");
-        return S_OK;
-    }
+    boolean visible;
+    args->get_Visible(&visible);
+    m_visible = visible;
+    handleWindowState();
 
-    foreach (QWindow *w, qGuiApp->topLevelWindows())
-        QWindowSystemInterface::handleWindowStateChanged(w, visible ? Qt::WindowFullScreen : Qt::WindowMinimized);
     return S_OK;
 }
 
@@ -966,3 +988,37 @@ HRESULT QWinRTScreen::onOrientationChanged(IInspectable *)
     return S_OK;
 }
 
+void QWinRTScreen::handleWindowState()
+{
+#ifdef Q_OS_WINPHONE
+    if (m_visible) {
+#else //!Q_OS_WINPHONE
+    ApplicationViewState value;
+    m_applicationView->get_Value(&value);
+    if (m_visible && value == ApplicationViewState_Snapped) {
+        if (m_windowState == Qt::WindowNoState)
+            return;
+
+        m_windowState = Qt::WindowNoState;
+    } else if (m_visible && value == ApplicationViewState_Filled) {
+        if (m_windowState == Qt::WindowMaximized)
+            return;
+
+        m_windowState = Qt::WindowMaximized;
+    } else if (m_visible && (value == ApplicationViewState_FullScreenLandscape
+                           || value == ApplicationViewState_FullScreenPortrait)) {
+#endif //!Q_OS_WINPHONE
+        if (m_windowState == Qt::WindowFullScreen)
+            return;
+
+        m_windowState = Qt::WindowFullScreen;
+    } else {
+        if (m_windowState == Qt::WindowMinimized)
+            return;
+
+        m_windowState = Qt::WindowMinimized;
+    }
+
+    foreach (QWindow *w, qGuiApp->topLevelWindows())
+        w->setWindowState(m_windowState);
+}
