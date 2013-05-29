@@ -551,8 +551,10 @@ QWinRTScreen::QWinRTScreen(ICoreWindow *window)
                                                     &m_tokens[QEvent::OrientationChange]);
     }
 
+#ifndef Q_OS_WINPHONE
     GetActivationFactory(HString::MakeReference(RuntimeClass_Windows_UI_ViewManagement_ApplicationView).Get(),
                          &m_applicationView);
+#endif
 }
 
 QRect QWinRTScreen::geometry() const
