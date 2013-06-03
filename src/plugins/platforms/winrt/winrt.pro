@@ -9,7 +9,7 @@ QT += core-private gui-private platformsupport-private
 
 DEFINES += __WRL_NO_DEFAULT_LIB__
 
-winrt:QMAKE_CXXFLAGS += -ZW -EHsc
+LIBS += $$QMAKE_LIBS_CORE
 
 SOURCES = \
     main.cpp  \
