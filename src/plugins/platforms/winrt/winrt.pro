@@ -37,6 +37,8 @@ contains(QT_CONFIG, opengles2) {
     SOURCES += qwinrteglcontext.cpp
     HEADERS += qwinrteglcontext.h
 } else {
+    # Required for Exception handling
+    QMAKE_CXXFLAGS += -ZW
     SOURCES += qwinrtpageflipper.cpp
     HEADERS += qwinrtpageflipper.h
     LIBS += -ld3d11
