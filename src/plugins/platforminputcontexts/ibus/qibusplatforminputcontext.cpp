@@ -57,7 +57,7 @@
 
 QT_BEGIN_NAMESPACE
 
-enum { debug = 0 };
+enum { debug = 1 };
 
 class QIBusPlatformInputContextPrivate
 {
@@ -87,6 +87,7 @@ QIBusPlatformInputContext::QIBusPlatformInputContext ()
     if (d->context) {
         connect(d->context, SIGNAL(CommitText(QDBusVariant)), SLOT(commitText(QDBusVariant)));
         connect(d->context, SIGNAL(UpdatePreeditText(QDBusVariant,uint,bool)), this, SLOT(updatePreeditText(QDBusVariant,uint,bool)));
+        connect(d->context, SIGNAL(ForwardKeyEvent(uint,uint,uint)), this, SLOT(forwardKeyEvent(uint, uint, uint)));
     }
     QInputMethod *p = qApp->inputMethod();
     connect(p, SIGNAL(cursorRectangleChanged()), this, SLOT(cursorRectChanged()));
@@ -225,6 +226,26 @@ void QIBusPlatformInputContext::updatePreeditText(const QDBusVariant &text, uint
     d->predit = t.text;
 }
 
+void QIBusPlatformInputContext::forwardKeyEvent(uint keyval, uint keycode, uint state)
+{
+    QObject *input = qApp->focusObject();
+    if (!input)
+        return;
+
+    // Convert keyval, keycode, state
+    QEvent::Type type = (state >> 30) & 0x1 ? QEvent::KeyPress : QEvent::KeyRelease;
+    type = QEvent::KeyPress;
+    Qt::KeyboardModifiers mod = 0;
+    uint key = 0;
+    if (keyval == 0xff08) {
+        key = Qt::Key_Backspace;
+    }
+
+    QKeyEvent event(type, key, mod);
+
+    qDebug() << QString().sprintf("Forward key event: %d %d %d\n", type, key, mod);
+    QCoreApplication::sendEvent(input, &event);
+}
 
 bool
 QIBusPlatformInputContext::x11FilterEvent(uint keyval, uint keycode, uint state, bool press)

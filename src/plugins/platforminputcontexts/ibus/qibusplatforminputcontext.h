@@ -69,6 +69,7 @@ public Q_SLOTS:
     void commitText(const QDBusVariant &text);
     void updatePreeditText(const QDBusVariant &text, uint cursor_pos, bool visible);
     void cursorRectChanged();
+    void forwardKeyEvent(uint keyval, uint keycode, uint state);
 
 private:
     QIBusPlatformInputContextPrivate *d;
